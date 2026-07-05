@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ForgeFlow</title>
+<style>
+  :root { --bg:#0f1117; --panel:#181b23; --border:#2a2f3a; --text:#e6e8ee; --muted:#8b93a5;
+          --ok:#3fb950; --bad:#f85149; --warn:#d29922; --run:#58a6ff; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; padding:24px; }
+  h1 { font-size:18px; letter-spacing:.5px; }
+  h1 span { color:var(--muted); font-weight:normal; font-size:13px; margin-left:12px; }
+  .stats { display:flex; gap:12px; margin:20px 0; flex-wrap:wrap; }
+  .stat { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px 20px; min-width:120px; }
+  .stat b { display:block; font-size:22px; }
+  .stat span { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:1px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:24px 0 8px; }
+  table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  th,td { text-align:left; padding:8px 12px; border-bottom:1px solid var(--border); font-size:13px; }
+  th { color:var(--muted); font-weight:normal; text-transform:uppercase; font-size:11px; letter-spacing:1px; }
+  tr:last-child td { border-bottom:none; }
+  .s { padding:2px 8px; border-radius:10px; font-size:12px; }
+  .s-succeeded,.s-active { background:rgba(63,185,80,.15); color:var(--ok); }
+  .s-failed,.s-dead,.s-cancelled { background:rgba(248,81,73,.15); color:var(--bad); }
+  .s-pending,.s-paused { background:rgba(210,153,34,.15); color:var(--warn); }
+  .s-running { background:rgba(88,166,255,.15); color:var(--run); }
+  .muted { color:var(--muted); }
+  .err { color:var(--bad); max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+</style>
+</head>
+<body>
+<h1>FORGEFLOW <span>distributed job scheduler — auto-refreshes every 2s</span></h1>
+<div class="stats" id="stats"></div>
+<h2>Jobs</h2>
+<table><thead><tr><th>ID</th><th>Name</th><th>Executor</th><th>Schedule</th><th>Status</th><th>Next run</th></tr></thead><tbody id="jobs"></tbody></table>
+<h2>Recent runs</h2>
+<table><thead><tr><th>ID</th><th>Job</th><th>Status</th><th>Attempt</th><th>Worker</th><th>Scheduled</th><th>Error</th></tr></thead><tbody id="runs"></tbody></table>
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const badge = s => `<span class="s s-${esc(s)}">${esc(s)}</span>`;
+const t = s => s ? new Date(s).toLocaleTimeString() : '<span class="muted">-</span>';
+async function refresh() {
+  try {
+    const [stats, jobs, runs] = await Promise.all(
+      ['/api/stats', '/api/jobs?limit=50', '/api/runs?limit=50'].map(u => fetch(u).then(r => r.json())));
+    const order = ['pending','running','succeeded','failed','dead','cancelled'];
+    document.getElementById('stats').innerHTML = order.map(k =>
+      `<div class="stat"><b>${stats[k] ?? 0}</b><span>${k}</span></div>`).join('');
+    document.getElementById('jobs').innerHTML = jobs.map(j =>
+      `<tr><td>${j.id}</td><td>${esc(j.name)}</td><td>${esc(j.executor)}</td>
+       <td>${esc(j.cron_expr || (j.run_at ? 'once' : 'now'))}</td>
+       <td>${badge(j.status)}</td><td>${t(j.next_run_at)}</td></tr>`).join('')
+      || '<tr><td colspan="6" class="muted">no jobs yet</td></tr>';
+    document.getElementById('runs').innerHTML = runs.map(r =>
+      `<tr><td>${r.id}</td><td>${r.job_id}</td><td>${badge(r.status)}</td>
+       <td>${r.attempt}/${r.max_attempts}</td><td>${esc(r.worker_id || '-')}</td>
+       <td>${t(r.scheduled_for)}</td><td class="err">${esc(r.error || '')}</td></tr>`).join('')
+      || '<tr><td colspan="7" class="muted">no runs yet</td></tr>';
+  } catch (e) { /* server restarting; retry next tick */ }
+}
+refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>

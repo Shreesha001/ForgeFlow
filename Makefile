@@ -6,9 +6,9 @@ build:
 test:
 	go test -race ./...
 
-# Needs a local Postgres, e.g.: docker compose up -d postgres
+# Needs the compose Postgres: docker compose up -d postgres (host port 5433)
 test-integration:
-	FORGEFLOW_TEST_DATABASE_URL=postgres://forgeflow:forgeflow@localhost:5432/forgeflow?sslmode=disable \
+	FORGEFLOW_TEST_DATABASE_URL=postgres://forgeflow:forgeflow@localhost:5433/forgeflow?sslmode=disable \
 		go test -race -count=1 ./...
 
 run: build

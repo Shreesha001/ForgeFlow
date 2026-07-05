@@ -38,8 +38,23 @@ func New(ctx context.Context, databaseURL string) (*Store, error) {
 
 func (s *Store) Close() { s.pool.Close() }
 
+// migrateLockKey serialises concurrent migrations: when several nodes boot at
+// once, racing CREATE TABLE IF NOT EXISTS statements can fail on internal
+// catalog uniqueness (pg_type), so only one node migrates at a time.
+const migrateLockKey = 0xF0F6D
+
 // Migrate applies embedded SQL migrations in lexical order.
 func (s *Store) Migrate(ctx context.Context) error {
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrateLockKey); err != nil {
+		return err
+	}
+	defer conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, migrateLockKey)
+
 	entries, err := fs.ReadDir(migrationsFS, "migrations")
 	if err != nil {
 		return err
@@ -54,7 +69,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if _, err := s.pool.Exec(ctx, string(sql)); err != nil {
+		if _, err := conn.Exec(ctx, string(sql)); err != nil {
 			return fmt.Errorf("migration %s: %w", name, err)
 		}
 	}

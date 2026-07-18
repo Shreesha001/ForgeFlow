@@ -28,6 +28,12 @@ pipeline {
                     reuseNode true // keep using the same checked-out code
                 }
             }
+            // The golang container's default user has no writable HOME, so Go
+            // can't create its build/module cache. Point HOME at the workspace,
+            // which IS writable, so caches land in ./ (throwaway) instead of /.
+            environment {
+                HOME = "${WORKSPACE}"
+            }
             steps {
                 sh 'go vet ./...'
                 sh 'go build ./...'

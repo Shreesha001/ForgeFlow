@@ -39,5 +39,23 @@ pipeline {
                 sh 'go build ./...'
             }
         }
+
+        // Build a Docker image of ForgeFlow (using the repo's Dockerfile) and
+        // push it to Docker Hub. Runs on the Jenkins node (agent any), which now
+        // has Docker access.
+        stage('Build & Push Image') {
+            steps {
+                script {
+                    // Tag with the Jenkins build number, e.g. shreesha001/forgeflow:7
+                    def img = docker.build("shreesha001/forgeflow:${BUILD_NUMBER}")
+
+                    // Log in to Docker Hub using the 'dockerhub' credential, then push.
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
+                        img.push()            // push the :BUILD_NUMBER tag
+                        img.push('latest')    // also update :latest
+                    }
+                }
+            }
+        }
     }
 }
